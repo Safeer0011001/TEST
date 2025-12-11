@@ -1,56 +1,322 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Super Simple Chat</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #333; color: white; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Premium Chat</title>
+    <style>
+        /* --- HIGH LEVEL CSS VARIABLES --- */
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --bg-color: #121212;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+            --my-msg-bg: #667eea;
+            --other-msg-bg: #2a2a2a;
+            --text-color: #ffffff;
+            --sub-text: #a0a0a0;
+        }
 
-    /* The Message List */
-    #messages { list-style-type: none; margin: 0; padding: 0; }
-    #messages li { padding: 0.5rem 1rem; border-bottom: 1px solid #444; }
-    #messages li:nth-child(odd) { background: #3a3a3a; }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
 
-    /* The Input Form */
-    #form { background: #222; padding: 0.25rem; position: fixed; bottom: 0; left: 0; right: 0; display: flex; height: 3rem; box-sizing: border-box; backdrop-filter: blur(10px); }
-    #input { border: none; padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin: 0.25rem; }
-    #input:focus { outline: none; }
-    #form > button { background: #007bff; border: none; padding: 0 1rem; margin: 0.25rem; border-radius: 3px; outline: none; color: #fff; cursor: pointer; }
-  </style>
+        /* --- LOGIN SCREEN --- */
+        #login-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-color);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            transition: opacity 0.5s ease;
+        }
+        .login-box {
+            background: var(--glass-bg);
+            padding: 2rem;
+            border-radius: 20px;
+            border: var(--glass-border);
+            text-align: center;
+            backdrop-filter: blur(10px);
+            width: 80%;
+            max-width: 300px;
+        }
+        .login-box h2 { margin-top: 0; }
+        .login-box input {
+            width: 90%;
+            padding: 10px;
+            border-radius: 10px;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            margin-bottom: 15px;
+            outline: none;
+        }
+        .btn-primary {
+            background: var(--primary-gradient);
+            border: none;
+            padding: 10px 20px;
+            color: white;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+            width: 100%;
+        }
+        .btn-primary:active { transform: scale(0.95); }
+
+        /* --- CHAT AREA --- */
+        #chat-container {
+            display: none; /* Hidden until logged in */
+            flex-direction: column;
+            height: 100%;
+        }
+
+        header {
+            padding: 15px;
+            background: rgba(20, 20, 20, 0.9);
+            border-bottom: var(--glass-border);
+            text-align: center;
+            font-weight: bold;
+            letter-spacing: 1px;
+            backdrop-filter: blur(5px);
+        }
+
+        #messages {
+            flex: 1;
+            list-style: none;
+            padding: 20px;
+            margin: 0;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        /* Message Bubbles */
+        .message-row {
+            display: flex;
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .message-content {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 18px;
+            position: relative;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .username-label {
+            font-size: 0.7rem;
+            margin-bottom: 2px;
+            color: var(--sub-text);
+            display: block;
+        }
+
+        .time-label {
+            font-size: 0.65rem;
+            opacity: 0.7;
+            float: right;
+            margin-left: 10px;
+            margin-top: 5px;
+        }
+
+        /* Styles for ME vs OTHER */
+        .me { justify-content: flex-end; }
+        .me .message-content {
+            background: var(--primary-gradient);
+            color: white;
+            border-bottom-right-radius: 2px;
+        }
+        .me .username-label { display: none; } /* Don't show my own name */
+
+        .other { justify-content: flex-start; }
+        .other .message-content {
+            background: var(--other-msg-bg);
+            color: white;
+            border-bottom-left-radius: 2px;
+        }
+
+        .system-message {
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--sub-text);
+            margin: 10px 0;
+            font-style: italic;
+        }
+
+        /* --- TYPING INDICATOR --- */
+        #typing-indicator {
+            padding: 5px 20px;
+            font-size: 0.8rem;
+            color: var(--sub-text);
+            height: 20px;
+            font-style: italic;
+        }
+
+        /* --- INPUT AREA --- */
+        #input-area {
+            padding: 15px;
+            background: rgba(30,30,30, 0.9);
+            display: flex;
+            gap: 10px;
+            backdrop-filter: blur(10px);
+        }
+        #message-input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 25px;
+            border: none;
+            background: #2a2a2a;
+            color: white;
+            outline: none;
+        }
+        #send-btn {
+            background: var(--primary-gradient);
+            border: none;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+    </style>
 </head>
 <body>
-  
-  <ul id="messages"></ul>
-  
-  <form id="form" action="">
-    <input id="input" autocomplete="off" placeholder="Type a message..." /><button>Send</button>
-  </form>
 
-  <!-- This script is provided automatically by the server -->
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    var socket = io();
+    <!-- Login Overlay -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h2>Welcome</h2>
+            <input type="text" id="username-input" placeholder="Enter your name..." autocomplete="off">
+            <button class="btn-primary" onclick="joinChat()">Join Chat</button>
+        </div>
+    </div>
 
-    var messages = document.getElementById('messages');
-    var form = document.getElementById('form');
-    var input = document.getElementById('input');
+    <!-- Main Chat Interface -->
+    <div id="chat-container">
+        <header>PREMIUM CHAT</header>
+        
+        <ul id="messages"></ul>
+        
+        <div id="typing-indicator"></div>
 
-    // Send Message
-    form.addEventListener('submit', function(e) {
-      e.preventDefault();
-      if (input.value) {
-        socket.emit('chat message', input.value);
-        input.value = '';
-      }
-    });
+        <form id="input-area">
+            <input id="message-input" autocomplete="off" placeholder="Type a message..." />
+            <button id="send-btn">➤</button>
+        </form>
+    </div>
 
-    // Receive Message
-    socket.on('chat message', function(msg) {
-      var item = document.createElement('li');
-      item.textContent = msg;
-      messages.appendChild(item);
-      window.scrollTo(0, document.body.scrollHeight);
-    });
-  </script>
+    <!-- Logic -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        
+        // DOM Elements
+        const loginScreen = document.getElementById('login-screen');
+        const chatContainer = document.getElementById('chat-container');
+        const usernameInput = document.getElementById('username-input');
+        const form = document.getElementById('input-area');
+        const input = document.getElementById('message-input');
+        const messages = document.getElementById('messages');
+        const typingDiv = document.getElementById('typing-indicator');
+
+        let myName = "";
+        let typingTimeout;
+
+        // 1. Join Logic
+        function joinChat() {
+            const name = usernameInput.value.trim();
+            if (name) {
+                myName = name;
+                socket.emit('join', name);
+                
+                // Fade out login, show chat
+                loginScreen.style.opacity = '0';
+                setTimeout(() => {
+                    loginScreen.style.display = 'none';
+                    chatContainer.style.display = 'flex';
+                }, 500);
+            } else {
+                alert("Please enter a name");
+            }
+        }
+
+        // 2. Sending Messages
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (input.value) {
+                socket.emit('chat message', input.value);
+                input.value = '';
+                socket.emit('typing', false); // Stop typing status
+            }
+        });
+
+        // 3. Typing Detection
+        input.addEventListener('input', () => {
+            socket.emit('typing');
+        });
+
+        // 4. Receiving Messages
+        socket.on('chat message', function(msgData) {
+            const li = document.createElement('li');
+            
+            // Determine if it is Me or Other
+            const isMe = msgData.id === socket.id;
+            li.className = `message-row ${isMe ? 'me' : 'other'}`;
+            
+            li.innerHTML = `
+                <div class="message-content">
+                    <span class="username-label">${msgData.user}</span>
+                    ${msgData.text}
+                    <span class="time-label">${msgData.time}</span>
+                </div>
+            `;
+            
+            messages.appendChild(li);
+            // Clear typing indicator if message received
+            typingDiv.textContent = "";
+            scrollToBottom();
+        });
+
+        // 5. System Messages (Join/Left)
+        socket.on('system_message', (text) => {
+            const li = document.createElement('li');
+            li.className = 'system-message';
+            li.textContent = text;
+            messages.appendChild(li);
+            scrollToBottom();
+        });
+
+        // 6. Typing Indicator Logic
+        socket.on('user_typing', (user) => {
+            typingDiv.textContent = `${user} is typing...`;
+            clearTimeout(typingTimeout);
+            // Remove text after 3 seconds of no activity
+            typingTimeout = setTimeout(() => {
+                typingDiv.textContent = "";
+            }, 3000);
+        });
+
+        function scrollToBottom() {
+            messages.scrollTop = messages.scrollHeight;
+        }
+    </script>
 </body>
 </html>
