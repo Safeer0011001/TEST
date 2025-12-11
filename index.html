@@ -3,320 +3,360 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Premium Chat</title>
+    <title>ProChat Sync</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://www.youtube.com/iframe_api"></script> <!-- YouTube API -->
     <style>
-        /* --- HIGH LEVEL CSS VARIABLES --- */
-        :root {
-            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --bg-color: #121212;
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: 1px solid rgba(255, 255, 255, 0.1);
-            --my-msg-bg: #667eea;
-            --other-msg-bg: #2a2a2a;
-            --text-color: #ffffff;
-            --sub-text: #a0a0a0;
-        }
+        /* --- CORE DESIGN --- */
+        :root { --bg: #0F172A; --primary: #6366F1; --grad: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); --glass: rgba(15, 23, 42, 0.95); --text: #F8FAFC; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-        body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
+        /* --- STICKY PLAYER --- */
+        #sticky-layer {
+            position: fixed; top: 0; left: 0; right: 0; 
+            z-index: 4000; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+            padding: 10px; display: none; flex-direction: column; align-items: center;
+            border-bottom: 2px solid var(--primary);
+            transition: 0.3s;
         }
+        #sticky-layer.active { display: flex; }
 
-        /* --- LOGIN SCREEN --- */
-        #login-screen {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--bg-color);
-            z-index: 100;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            transition: opacity 0.5s ease;
+        .video-box {
+            width: 100%; max-width: 640px; aspect-ratio: 16/9;
+            background: #000; border-radius: 12px; overflow: hidden; position: relative;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
         }
-        .login-box {
-            background: var(--glass-bg);
-            padding: 2rem;
-            border-radius: 20px;
-            border: var(--glass-border);
-            text-align: center;
-            backdrop-filter: blur(10px);
-            width: 80%;
-            max-width: 300px;
+        
+        .close-vid {
+            position: absolute; top: -15px; right: -15px; width: 40px; height: 40px;
+            background: red; color: white; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; cursor: pointer; font-weight: bold;
+            border: 2px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 5000;
         }
-        .login-box h2 { margin-top: 0; }
-        .login-box input {
-            width: 90%;
-            padding: 10px;
-            border-radius: 10px;
-            border: none;
-            background: rgba(255,255,255,0.1);
-            color: white;
-            margin-bottom: 15px;
-            outline: none;
-        }
-        .btn-primary {
-            background: var(--primary-gradient);
-            border: none;
-            padding: 10px 20px;
-            color: white;
-            border-radius: 20px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: transform 0.2s;
-            width: 100%;
-        }
-        .btn-primary:active { transform: scale(0.95); }
 
         /* --- CHAT AREA --- */
-        #chat-container {
-            display: none; /* Hidden until logged in */
-            flex-direction: column;
-            height: 100%;
-        }
+        #chat-zone { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; padding-top: 20px; }
+        body.has-video #chat-zone { padding-top: 20px; } /* Adjust if needed */
 
-        header {
-            padding: 15px;
-            background: rgba(20, 20, 20, 0.9);
-            border-bottom: var(--glass-border);
-            text-align: center;
-            font-weight: bold;
-            letter-spacing: 1px;
-            backdrop-filter: blur(5px);
-        }
+        .msg-row { display: flex; gap: 10px; align-items: flex-end; animation: fade 0.3s; }
+        .msg-row.me { flex-direction: row-reverse; }
+        @keyframes fade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-        #messages {
-            flex: 1;
-            list-style: none;
-            padding: 20px;
-            margin: 0;
-            overflow-y: auto;
-            scroll-behavior: smooth;
-        }
+        .bubble { max-width: 80%; padding: 12px; border-radius: 18px; font-size: 0.95rem; word-wrap: break-word; }
+        .me .bubble { background: var(--grad); color: white; border-bottom-right-radius: 4px; }
+        .other .bubble { background: #1E293B; border-bottom-left-radius: 4px; border: 1px solid rgba(255,255,255,0.1); }
 
-        /* Message Bubbles */
-        .message-row {
-            display: flex;
-            margin-bottom: 15px;
-            animation: fadeIn 0.3s ease;
+        .embed-btn {
+            background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2);
+            padding: 10px; border-radius: 10px; margin-top: 5px; cursor: pointer;
+            display: flex; align-items: center; gap: 10px; transition: 0.2s;
         }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .embed-btn:hover { background: rgba(0,0,0,0.5); border-color: var(--primary); }
+        .play-icon { width: 30px; height: 30px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; }
 
-        .message-content {
-            max-width: 70%;
-            padding: 10px 15px;
-            border-radius: 18px;
-            position: relative;
-            font-size: 0.95rem;
-            line-height: 1.4;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-        
-        .username-label {
-            font-size: 0.7rem;
-            margin-bottom: 2px;
-            color: var(--sub-text);
-            display: block;
-        }
+        .embed-img { max-width: 100%; border-radius: 10px; margin-top: 5px; cursor: pointer; }
 
-        .time-label {
-            font-size: 0.65rem;
-            opacity: 0.7;
-            float: right;
-            margin-left: 10px;
-            margin-top: 5px;
+        /* --- INPUT --- */
+        .input-bar {
+            background: var(--glass); padding: 10px 15px; display: flex; gap: 10px;
+            align-items: center; border-top: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: max(10px, env(safe-area-inset-bottom));
         }
+        .inp { flex: 1; padding: 12px; background: rgba(255,255,255,0.1); border: none; border-radius: 20px; color: white; outline: none; }
+        .icon-btn { font-size: 22px; cursor: pointer; color: var(--primary); padding: 5px; }
 
-        /* Styles for ME vs OTHER */
-        .me { justify-content: flex-end; }
-        .me .message-content {
-            background: var(--primary-gradient);
-            color: white;
-            border-bottom-right-radius: 2px;
-        }
-        .me .username-label { display: none; } /* Don't show my own name */
+        /* --- MODALS --- */
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
+        .modal.active { display: flex; }
+        .card { background: #1E293B; padding: 25px; border-radius: 20px; width: 90%; max-width: 320px; text-align: center; border: 1px solid rgba(255,255,255,0.1); }
+        .btn { width: 100%; padding: 12px; background: var(--grad); border: none; border-radius: 12px; color: white; font-weight: bold; margin-top: 10px; cursor: pointer; }
 
-        .other { justify-content: flex-start; }
-        .other .message-content {
-            background: var(--other-msg-bg);
-            color: white;
-            border-bottom-left-radius: 2px;
-        }
+        #toast-box { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; }
+        .toast { background: #10B981; padding: 8px 16px; border-radius: 20px; margin-bottom: 5px; font-size: 0.9rem; color: white; }
 
-        .system-message {
-            text-align: center;
-            font-size: 0.8rem;
-            color: var(--sub-text);
-            margin: 10px 0;
-            font-style: italic;
-        }
-
-        /* --- TYPING INDICATOR --- */
-        #typing-indicator {
-            padding: 5px 20px;
-            font-size: 0.8rem;
-            color: var(--sub-text);
-            height: 20px;
-            font-style: italic;
-        }
-
-        /* --- INPUT AREA --- */
-        #input-area {
-            padding: 15px;
-            background: rgba(30,30,30, 0.9);
-            display: flex;
-            gap: 10px;
-            backdrop-filter: blur(10px);
-        }
-        #message-input {
-            flex: 1;
-            padding: 12px;
-            border-radius: 25px;
-            border: none;
-            background: #2a2a2a;
-            color: white;
-            outline: none;
-        }
-        #send-btn {
-            background: var(--primary-gradient);
-            border: none;
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            color: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
+        /* Camera */
+        #cam-overlay { position: fixed; inset: 0; background: black; z-index: 5000; display: none; flex-direction: column; }
+        #cam-vid { flex: 1; object-fit: cover; }
+        .shutter { width: 70px; height: 70px; border: 4px solid white; border-radius: 50%; background: rgba(255,255,255,0.3); margin: 20px auto; cursor: pointer; }
+        .close-x { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; z-index: 5001; }
     </style>
 </head>
 <body>
 
-    <!-- Login Overlay -->
-    <div id="login-screen">
-        <div class="login-box">
-            <h2>Welcome</h2>
-            <input type="text" id="username-input" placeholder="Enter your name..." autocomplete="off">
-            <button class="btn-primary" onclick="joinChat()">Join Chat</button>
+    <div id="toast-box"></div>
+
+    <!-- SHARED PLAYER -->
+    <div id="sticky-layer">
+        <div style="position:relative; width:100%; max-width:640px;">
+            <div class="close-vid" onclick="stopWatching()">✕</div>
+            <div class="video-box" id="player-container">
+                <!-- Video/Iframe goes here -->
+            </div>
+            <div style="color:#aaa; font-size:0.8rem; margin-top:5px; text-align:center;">🔴 Watch Party Active</div>
         </div>
     </div>
 
-    <!-- Main Chat Interface -->
-    <div id="chat-container">
-        <header>PREMIUM CHAT</header>
-        
-        <ul id="messages"></ul>
-        
-        <div id="typing-indicator"></div>
-
-        <form id="input-area">
-            <input id="message-input" autocomplete="off" placeholder="Type a message..." />
-            <button id="send-btn">➤</button>
-        </form>
+    <!-- CHAT -->
+    <div style="position:fixed; top:0; left:0; right:0; height:60px; background:rgba(15,23,42,0.9); z-index:100; display:flex; align-items:center; justify-content:space-between; padding:0 20px; border-bottom:1px solid rgba(255,255,255,0.1);">
+        <span style="font-weight:bold; font-size:1.2rem; color:var(--primary);">ProChat</span>
+        <div id="head-av" style="width:35px; height:35px; border-radius:50%; background:#333; cursor:pointer;" onclick="openProfile()"></div>
     </div>
 
-    <!-- Logic -->
+    <div id="chat-zone" style="margin-top:60px; margin-bottom:70px;"></div>
+
+    <form class="input-bar" style="position:fixed; bottom:0; width:100%;" onsubmit="sendMsg(event)">
+        <span class="icon-btn" onclick="openCam()">📷</span>
+        <span class="icon-btn" onclick="document.getElementById('f-up').click()">📎</span>
+        <input type="file" id="f-up" hidden accept="image/*" onchange="upImg()">
+        <input id="msg-in" class="inp" placeholder="Message or Video Link..." autocomplete="off">
+        <button class="btn" style="width:auto; margin:0;">➤</button>
+    </form>
+
+    <!-- MODALS -->
+    <div id="login-mod" class="modal active">
+        <div class="card">
+            <h2>Welcome</h2>
+            <input id="log-name" class="inp" placeholder="Name">
+            <button class="btn" onclick="login()">Enter</button>
+        </div>
+    </div>
+
+    <div id="profile-mod" class="modal">
+        <div class="card">
+            <div style="text-align:right; cursor:pointer;" onclick="toggle('profile-mod',false)">✕</div>
+            <h3>Edit Profile</h3>
+            <img id="my-av-img" style="width:80px; height:80px; border-radius:50%; display:block; margin:0 auto; object-fit:cover; background:#333;">
+            <button onclick="document.getElementById('av-f').click()" style="background:none; border:1px solid var(--primary); color:var(--primary); padding:5px; margin:10px; border-radius:10px; cursor:pointer;">Change</button>
+            <input type="file" id="av-f" hidden onchange="prevAv()">
+            <input id="bio-in" class="inp" placeholder="Bio">
+            <input id="loc-in" class="inp" placeholder="Location">
+            <button class="btn" onclick="saveProf()">Save</button>
+        </div>
+    </div>
+
+    <div id="cam-overlay">
+        <video id="cam-vid" autoplay playsinline></video>
+        <div class="close-x" onclick="document.getElementById('cam-overlay').style.display='none'">✕</div>
+        <div class="shutter" onclick="snap()"></div>
+        <canvas id="cam-cvs" hidden></canvas>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let myProfile = {};
         
-        // DOM Elements
-        const loginScreen = document.getElementById('login-screen');
-        const chatContainer = document.getElementById('chat-container');
-        const usernameInput = document.getElementById('username-input');
-        const form = document.getElementById('input-area');
-        const input = document.getElementById('message-input');
-        const messages = document.getElementById('messages');
-        const typingDiv = document.getElementById('typing-indicator');
+        // --- VIDEO SYNC VARIABLES ---
+        let playerType = null;
+        let ytPlayer = null;
+        let directPlayer = null;
+        let ignoreEvents = false; // THE ANTI-LOOP LOCK
+        let syncInterval = null;
 
-        let myName = "";
-        let typingTimeout;
+        // --- LOGIN ---
+        function login() {
+            const n = document.getElementById('log-name').value.trim();
+            if(n) socket.emit('join', n);
+        }
+        socket.on('login_success', (u) => {
+            myProfile = u;
+            toggle('login-mod', false);
+            upHead();
+            showToast("Connected");
+        });
 
-        // 1. Join Logic
-        function joinChat() {
-            const name = usernameInput.value.trim();
-            if (name) {
-                myName = name;
-                socket.emit('join', name);
-                
-                // Fade out login, show chat
-                loginScreen.style.opacity = '0';
-                setTimeout(() => {
-                    loginScreen.style.display = 'none';
-                    chatContainer.style.display = 'flex';
-                }, 500);
+        // --- MESSAGE PARSING ---
+        function parse(txt) {
+            // Image
+            if(txt.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return `<img src="${txt}" class="embed-img" onclick="window.open(this.src)">`;
+            
+            // YouTube
+            const yt = txt.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/);
+            if(yt) return `
+                <div>${txt}</div>
+                <div class="embed-btn" onclick="startVideo('youtube','${yt[1]}')">
+                    <div class="play-icon">▶</div>
+                    <div><b>YouTube</b><br>Watch Together</div>
+                </div>`;
+
+            // MP4
+            if(txt.match(/\.(mp4|webm)$/i)) return `
+                <div>${txt}</div>
+                <div class="embed-btn" onclick="startVideo('direct','${txt}')">
+                    <div class="play-icon">▶</div>
+                    <div><b>Video File</b><br>Watch Together</div>
+                </div>`;
+
+            return txt.replace(/</g,"&lt;");
+        }
+
+        // --- VIDEO ENGINE ---
+        function startVideo(type, src) {
+            socket.emit('video_start', { type, src });
+        }
+
+        function stopWatching() {
+            socket.emit('video_close');
+        }
+
+        // 1. LAUNCH PLAYER
+        socket.on('video_launch', (data) => {
+            playerType = data.type;
+            const con = document.getElementById('player-container');
+            document.getElementById('sticky-layer').classList.add('active');
+            
+            if (data.type === 'youtube') {
+                // Initialize YouTube IFrame API
+                con.innerHTML = `<div id="yt-slot"></div>`;
+                ytPlayer = new YT.Player('yt-slot', {
+                    height: '100%', width: '100%',
+                    videoId: data.src,
+                    playerVars: { 'autoplay': 1, 'controls': 1 },
+                    events: {
+                        'onReady': (e) => {
+                            if(data.status === 'playing') e.target.seekTo(data.timestamp, true);
+                        },
+                        'onStateChange': onYTStateChange
+                    }
+                });
             } else {
-                alert("Please enter a name");
+                // Direct Video
+                con.innerHTML = `<video id="d-vid" src="${data.src}" style="width:100%; height:100%;" controls autoplay></video>`;
+                directPlayer = document.getElementById('d-vid');
+                directPlayer.currentTime = data.timestamp;
+                if(data.status==='playing') directPlayer.play(); else directPlayer.pause();
+                
+                // Add Listeners
+                directPlayer.onplay = () => emitSync('play', directPlayer.currentTime);
+                directPlayer.onpause = () => emitSync('pause', directPlayer.currentTime);
+                directPlayer.onseeked = () => emitSync('seek', directPlayer.currentTime);
+            }
+        });
+
+        // 2. SYNC UPDATE FROM SERVER
+        socket.on('video_update', (data) => {
+            ignoreEvents = true; // LOCK: Don't emit back to server
+
+            if (playerType === 'youtube' && ytPlayer && ytPlayer.seekTo) {
+                if (Math.abs(ytPlayer.getCurrentTime() - data.time) > 1.5) {
+                    ytPlayer.seekTo(data.time, true);
+                }
+                if (data.action === 'play') ytPlayer.playVideo();
+                else ytPlayer.pauseVideo();
+            } 
+            else if (playerType === 'direct' && directPlayer) {
+                if (Math.abs(directPlayer.currentTime - data.time) > 1.5) {
+                    directPlayer.currentTime = data.time;
+                }
+                if (data.action === 'play') directPlayer.play().catch(e=>{});
+                else directPlayer.pause();
+            }
+
+            // UNLOCK after small delay
+            setTimeout(() => { ignoreEvents = false; }, 500);
+        });
+
+        // 3. TERMINATE
+        socket.on('video_terminate', () => {
+            document.getElementById('sticky-layer').classList.remove('active');
+            document.getElementById('player-container').innerHTML = "";
+            ytPlayer = null;
+            directPlayer = null;
+        });
+
+        // HELPER: EMIT TO SERVER (Only if not locked)
+        function emitSync(action, time) {
+            if (!ignoreEvents) {
+                socket.emit('video_sync', { action, time });
             }
         }
 
-        // 2. Sending Messages
-        form.addEventListener('submit', function(e) {
+        // YOUTUBE SPECIFIC HANDLER
+        function onYTStateChange(event) {
+            // YT.PlayerState: 1=PLAYING, 2=PAUSED
+            if (event.data === YT.PlayerState.PLAYING) {
+                emitSync('play', ytPlayer.getCurrentTime());
+            } else if (event.data === YT.PlayerState.PAUSED) {
+                emitSync('pause', ytPlayer.getCurrentTime());
+            }
+        }
+
+        // --- CHAT LOGIC ---
+        function sendMsg(e) {
             e.preventDefault();
-            if (input.value) {
-                socket.emit('chat message', input.value);
-                input.value = '';
-                socket.emit('typing', false); // Stop typing status
-            }
-        });
-
-        // 3. Typing Detection
-        input.addEventListener('input', () => {
-            socket.emit('typing');
-        });
-
-        // 4. Receiving Messages
-        socket.on('chat message', function(msgData) {
-            const li = document.createElement('li');
-            
-            // Determine if it is Me or Other
-            const isMe = msgData.id === socket.id;
-            li.className = `message-row ${isMe ? 'me' : 'other'}`;
-            
-            li.innerHTML = `
-                <div class="message-content">
-                    <span class="username-label">${msgData.user}</span>
-                    ${msgData.text}
-                    <span class="time-label">${msgData.time}</span>
-                </div>
-            `;
-            
-            messages.appendChild(li);
-            // Clear typing indicator if message received
-            typingDiv.textContent = "";
-            scrollToBottom();
-        });
-
-        // 5. System Messages (Join/Left)
-        socket.on('system_message', (text) => {
-            const li = document.createElement('li');
-            li.className = 'system-message';
-            li.textContent = text;
-            messages.appendChild(li);
-            scrollToBottom();
-        });
-
-        // 6. Typing Indicator Logic
-        socket.on('user_typing', (user) => {
-            typingDiv.textContent = `${user} is typing...`;
-            clearTimeout(typingTimeout);
-            // Remove text after 3 seconds of no activity
-            typingTimeout = setTimeout(() => {
-                typingDiv.textContent = "";
-            }, 3000);
-        });
-
-        function scrollToBottom() {
-            messages.scrollTop = messages.scrollHeight;
+            const i = document.getElementById('msg-in');
+            if(i.value.trim()) { socket.emit('chat message', {type:'text', content:i.value}); i.value=''; }
         }
+        function upImg() {
+            const f = document.getElementById('f-up').files[0];
+            const r = new FileReader();
+            r.onload=(e)=>socket.emit('chat message', {type:'image', content:e.target.result});
+            if(f) r.readAsDataURL(f);
+        }
+
+        // --- RENDER ---
+        function addMsg(d) {
+            const isMe = d.user === myProfile.name;
+            const r = document.createElement('div');
+            r.className = `msg-row ${isMe?'me':'other'}`;
+            r.dataset.id = d.id;
+
+            let av = '';
+            if(!isMe) av = d.avatar ? `<img src="${d.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;">` : `<div style="width:30px;height:30px;border-radius:50%;background:${d.avatarColor};display:flex;align-items:center;justify-content:center;">${d.user[0]}</div>`;
+
+            let cont = d.type==='text' ? parse(d.content) : `<img src="${d.content}" class="embed-img" onclick="window.open(this.src)">`;
+            
+            r.innerHTML = `${!isMe?av:''} <div class="bubble"> <div style="font-size:0.7rem;opacity:0.7;margin-bottom:4px;${isMe?'display:none':''}">${d.user}</div> ${cont} <div style="font-size:0.6rem;opacity:0.5;text-align:right;margin-top:4px;">${d.time} ${isMe && d.read ? '<span style="color:#60A5FA">✓✓</span>' : ''}</div> </div>`;
+            
+            const z = document.getElementById('chat-zone');
+            z.appendChild(r);
+            z.scrollTop = z.scrollHeight;
+            if(!isMe && !d.read) ioObserver.observe(r);
+        }
+
+        socket.on('message_receive', addMsg);
+        socket.on('history', (h)=>h.forEach(addMsg));
+        socket.on('message_updated_read', (id)=>{
+             const el = document.querySelector(`[data-id="${id}"] .bubble div:last-child`);
+             if(el) el.innerHTML += ' <span style="color:#60A5FA">✓✓</span>';
+        });
+        socket.on('toast', (d)=>showToast(d.text));
+
+        // --- UTILS ---
+        function toggle(id, s) { document.getElementById(id).classList.toggle('active', s); }
+        function showToast(t) {
+            const el = document.createElement('div'); el.className='toast'; el.innerText=t;
+            document.getElementById('toast-box').appendChild(el);
+            setTimeout(()=>el.remove(), 3000);
+        }
+        function upHead() {
+            const el = document.getElementById('head-av');
+            if(myProfile.avatar) { el.style.background=`url(${myProfile.avatar})`; el.style.backgroundSize='cover'; }
+            else el.style.background = myProfile.color;
+        }
+
+        // --- PROFILE ---
+        function saveProf() {
+            const f = document.getElementById('av-f').files[0];
+            const d = { bio: document.getElementById('bio-in').value, location: document.getElementById('loc-in').value };
+            if(f) { const r=new FileReader(); r.onload=(e)=>{d.avatar=e.target.result; socket.emit('update_profile',d); toggle('profile-mod',false);}; r.readAsDataURL(f); }
+            else { socket.emit('update_profile',d); toggle('profile-mod',false); }
+        }
+        socket.on('profile_updated', (p)=>{myProfile=p; upHead(); showToast("Saved");});
+        function prevAv(){const f=document.getElementById('av-f').files[0]; const r=new FileReader(); r.onload=(e)=>document.getElementById('my-av-img').src=e.target.result; if(f)r.readAsDataURL(f);}
+
+        // --- CAMERA ---
+        async function openCam() { try{document.getElementById('cam-vid').srcObject = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}); document.getElementById('cam-overlay').style.display='flex';}catch(e){alert("Cam Error");} }
+        function snap() {
+            const v = document.getElementById('cam-vid'); const c = document.getElementById('cam-cvs');
+            c.width=v.videoWidth; c.height=v.videoHeight;
+            c.getContext('2d').drawImage(v,0,0);
+            socket.emit('chat message', {type:'image', content:c.toDataURL('image/jpeg',0.8)});
+            document.getElementById('cam-overlay').style.display='none'; v.srcObject.getTracks().forEach(t=>t.stop());
+        }
+
+        const ioObserver = new IntersectionObserver((e)=>{e.forEach(i=>{if(i.isIntersecting){socket.emit('mark_read',i.target.dataset.id); ioObserver.unobserve(i.target);}})},{threshold:0.5});
     </script>
 </body>
 </html>
