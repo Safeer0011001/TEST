@@ -1,7 +1,7 @@
 {
-  "name": "ultimate-chat-max",
-  "version": "7.0.0",
-  "description": "Chat with User Profiles",
+  "name": "prochat-ultimate-v10",
+  "version": "10.0.0",
+  "description": "Real-time 3D Chat with Voice, Video & Watch Party",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
