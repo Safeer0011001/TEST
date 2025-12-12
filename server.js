@@ -5,229 +5,396 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const fs = require('fs');
 const path = require('path');
+const os = require('os'); // Added for Server Stats
 
-// --- HIGH LEVEL CONFIGURATION ---
+// --- SERVER CONFIG ---
+// increased buffer to 100MB to support VIDEO files
 const io = new Server(server, {
-    maxHttpBufferSize: 1e8, // 100MB Buffer for High-Res Images
-    pingTimeout: 60000,     // Better connection stability
+    maxHttpBufferSize: 1e8, 
+    pingTimeout: 60000,
     cors: { origin: "*" }
 });
 
 const DB_FILE = path.join(__dirname, 'database.json');
+const GOD_PASSWORD = "IAMNOOB";
 
-// --- DATABASE INIT (Enhanced Safety) ---
+// --- AUTO-MOD CONFIG ---
+const BAD_WORDS = ["badword1", "badword2", "spam", "scam"]; // Add your list here
+const REPLACEMENT = "****";
+
+// --- DB & STATE ---
 if (!fs.existsSync(DB_FILE)) {
-    // Create DB with default structure if missing
-    fs.writeFileSync(DB_FILE, JSON.stringify({ messages: [], users: {} }, null, 2));
+    // Added 'ipBans' and 'pinned' to schema
+    fs.writeFileSync(DB_FILE, JSON.stringify({ messages: [], users: {}, ipBans: [], pinned: null }, null, 2));
 }
 
-// Helper: Safe Read
-function getDB() {
-    try { 
-        const data = fs.readFileSync(DB_FILE, 'utf8');
-        return data ? JSON.parse(data) : { messages: [], users: {} }; 
-    } catch (e) { 
-        console.error("⚠️ Database Read Error, resetting to empty...");
-        return { messages: [], users: {} }; 
-    }
+function getDB() { try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch { return { messages: [], users: {}, ipBans: [], pinned: null }; } }
+function saveDB(data) { try { if (data.messages.length > 150) data.messages = data.messages.slice(-150); fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); } catch (e) {} }
+
+// --- RUNTIME STATE ---
+let videoState = { active: false, type: null, src: null };
+let activeSockets = {}; // socket.id -> username
+let socketLastMsg = {}; // Anti-Spam Timer
+let floodCount = {}; // Anti-Flood Counter
+let ghosts = new Set(); 
+let mutedUsers = new Set();
+let isChatFrozen = false;
+let slowModeDelay = 0; // 0 = off, >0 = milliseconds delay required
+
+app.get('/', (req, res) => { res.sendFile(__dirname + '/index.html'); });
+
+function updateCounts() {
+    let count = io.engine.clientsCount;
+    let visibleCount = Math.max(0, count - ghosts.size);
+    io.emit('update_online_count', visibleCount);
 }
 
-// Helper: Safe Save with Limit
-function saveDB(data) {
-    try {
-        // Keep only last 150 messages for better performance
-        if (data.messages.length > 150) data.messages = data.messages.slice(-150);
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    } catch (e) {
-        console.error("⚠️ Database Write Error:", e);
-    }
+// --- HELPER: FILTER TEXT ---
+function cleanText(text) {
+    if (!text || typeof text !== 'string') return text;
+    let clean = text;
+    BAD_WORDS.forEach(word => {
+        const regex = new RegExp(`\\b${word}\\b`, 'gi');
+        clean = clean.replace(regex, REPLACEMENT);
+    });
+    return clean;
 }
 
-// --- VIDEO STATE MEMORY ---
-let videoState = {
-    active: false,
-    type: null,
-    src: null,
-    status: 'paused',
-    timestamp: 0,
-    lastUpdate: Date.now()
-};
-
-// Serve Client
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
-});
-
-// Track Sockets
-let activeSockets = {};
+// --- HELPER: GET IP ---
+function getIP(socket) {
+    return socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+}
 
 io.on('connection', (socket) => {
-    
-    // Immediate Online Count Update
-    io.emit('update_online_count', io.engine.clientsCount);
+    const userIP = getIP(socket);
+    const db = getDB();
 
-    // --- JOIN LOGIC ---
+    // 1. IP BAN CHECK
+    if (db.ipBans && db.ipBans.includes(userIP)) {
+        socket.emit('login_fail', "🚫 YOUR IP IS BANNED.");
+        socket.disconnect(true);
+        return;
+    }
+
+    // 2. JOIN EVENT
     socket.on('join', (username) => {
-        const db = getDB();
-        // Validation: Ensure name exists and is trimmed
-        let cleanName = (username && typeof username === 'string') ? username.trim().substring(0, 20) : "Anon";
-        if(cleanName.length === 0) cleanName = "Anon";
+        let name = (username || "Anon").trim().substring(0, 20) || "Anon";
+        
+        // Check Username Ban
+        if (db.bans && db.bans.includes(name)) {
+            socket.emit('login_fail', "🚫 USERNAME BANNED.");
+            socket.disconnect(true);
+            return;
+        }
 
-        activeSockets[socket.id] = cleanName;
-
-        // Create Profile if new
-        if (!db.users[cleanName]) {
-            db.users[cleanName] = {
-                name: cleanName,
-                avatar: null, // Stores Base64
-                color: '#6366F1',
-                bio: "Just joined ProChat 3D",
-                location: "Unknown"
-            };
+        activeSockets[socket.id] = name;
+        
+        // Create User if new
+        if (!db.users[name]) {
+            db.users[name] = { name: name, avatar: null, color: '#6366F1', status: 'online', joinedAt: Date.now() };
+            saveDB(db);
+        } else {
+            // Update status on rejoin
+            db.users[name].status = 'online';
             saveDB(db);
         }
 
-        // Send Success & Data
-        socket.emit('login_success', db.users[cleanName]);
+        // Send Initial Data
+        socket.emit('login_success', db.users[name]);
         socket.emit('history', db.messages);
+        
+        // Send Pinned Message (Feature 11)
+        if(db.pinned) socket.emit('sys_announce', db.pinned);
+        
+        updateCounts();
+        socket.broadcast.emit('toast', { text: `${name} joined` });
+        
+        // Default Room
+        socket.join('global');
+    });
 
-        // Sync Video if active
-        if (videoState.active) {
-            let currentSeek = videoState.timestamp;
-            if (videoState.status === 'playing') {
-                const timeDiff = (Date.now() - videoState.lastUpdate) / 1000;
-                currentSeek += timeDiff;
+    // 3. GOD MODE / ADMIN ACTIONS
+    socket.on('god_attempt', (pass) => {
+        if (pass === GOD_PASSWORD) {
+            socket.isAdmin = true;
+            socket.emit('god_granted');
+            // Send server stats on login
+            const stats = {
+                mem: (os.freemem() / 1024 / 1024).toFixed(2) + " MB Free",
+                uptime: (os.uptime() / 60).toFixed(0) + " Mins",
+                load: os.loadavg()[0].toFixed(2)
+            };
+            socket.emit('god_log', `SERVER STATS: RAM: ${stats.mem} | UP: ${stats.uptime}`);
+        } else {
+            socket.emit('god_denied');
+        }
+    });
+
+    socket.on('get_active_users', () => { if(socket.isAdmin) socket.emit('update_user_list', Object.values(activeSockets)); });
+
+    socket.on('god_action', ({ action, target }) => {
+        if (!socket.isAdmin) return;
+        const db = getDB();
+        
+        const findSock = (name) => {
+            const id = Object.keys(activeSockets).find(k => activeSockets[k] === target);
+            return id ? io.sockets.sockets.get(id) : null;
+        };
+
+        // --- NEW IP BAN LOGIC ---
+        if (action === 'ban') {
+            const s = findSock(target);
+            const targetIP = s ? getIP(s) : null;
+            
+            // Ban Name
+            if(!db.bans) db.bans = [];
+            if(!db.bans.includes(target)) db.bans.push(target);
+            
+            // Ban IP
+            if(targetIP) {
+                if(!db.ipBans) db.ipBans = [];
+                if(!db.ipBans.includes(targetIP)) db.ipBans.push(targetIP);
+                io.emit('sys_alert', `🔨 ${target} (IP BANNED)`);
+            } else {
+                io.emit('sys_alert', `🔨 ${target} BANNED`);
             }
-            socket.emit('video_launch', { ...videoState, timestamp: currentSeek });
+            
+            saveDB(db);
+            if(s) { s.emit('login_fail', "IP BANNED"); s.disconnect(true); }
+        }
+
+        if (action === 'kick') {
+            const s = findSock(target);
+            if(s) { s.disconnect(true); io.emit('toast', {text: `👢 ${target} Kicked`}); }
+        }
+
+        if (action === 'mute') { mutedUsers.add(target); socket.emit('god_log', `Muted ${target}`); }
+        if (action === 'unmute') { mutedUsers.delete(target); socket.emit('god_log', `Unmuted ${target}`); }
+        
+        if (action === 'freeze') { isChatFrozen = true; io.emit('sys_alert', "❄️ CHAT FROZEN"); }
+        if (action === 'thaw') { isChatFrozen = false; io.emit('toast', {text: "Chat Thawed"}); }
+        if (action === 'nuke') { db.messages = []; saveDB(db); io.emit('sys_clear'); }
+        
+        // --- PERSISTENT ANNOUNCEMENT ---
+        if (action === 'announce') { 
+            db.pinned = target; 
+            saveDB(db); 
+            io.emit('sys_announce', target); 
+        }
+        if (action === 'clear_ann') { 
+            db.pinned = null; 
+            saveDB(db); 
+            io.emit('sys_clear_ann'); 
+        }
+
+        // --- SLOW MODE ---
+        if (action === 'slowmode') {
+            // Target should be milliseconds (e.g., "1000" for 1 sec)
+            slowModeDelay = parseInt(target) || 0;
+            io.emit('sys_alert', slowModeDelay > 0 ? `🐢 SLOW MODE: ${slowModeDelay}ms` : "🐇 SLOW MODE OFF");
         }
         
-        socket.broadcast.emit('toast', { text: `${cleanName} entered the world` });
+        if (action === 'ghost') {
+            if (ghosts.has(socket.id)) { ghosts.delete(socket.id); socket.emit('toast', {text: "👻 Ghost OFF"}); }
+            else { ghosts.add(socket.id); socket.emit('toast', {text: "👻 Ghost ON"}); }
+            updateCounts();
+        }
+
+        if (action === 'spy') {
+            const s = findSock(target);
+            if(s) socket.emit('spy_result', { user: target, ip: getIP(s), id: s.id });
+        }
+        
+        if (action === 'chaos') io.emit('force_chaos');
     });
 
-    // --- TYPING INDICATOR ---
-    socket.on('typing', (isTyping) => {
-        const name = activeSockets[socket.id];
-        if(name) socket.broadcast.emit('display_typing', { user: name, isTyping });
-    });
-
-    // --- PROFILE UPDATES ---
-    socket.on('update_profile', (data) => {
+    // 4. CHAT MESSAGING (UPDATED FOR VIDEO & FEATURES)
+    socket.on('chat message', (data) => {
         const name = activeSockets[socket.id];
         if (!name) return;
+
+        // A. Anti-Spam & Slow Mode Check
+        const now = Date.now();
+        const last = socketLastMsg[socket.id] || 0;
         
-        const db = getDB();
-        if (db.users[name]) {
-            // Update fields safely (Bio, Location, Avatar)
-            Object.assign(db.users[name], data);
-            saveDB(db);
-            // Confirm update to sender
-            socket.emit('profile_updated', db.users[name]);
+        // Check Slow Mode
+        if (slowModeDelay > 0 && !socket.isAdmin) {
+            if (now - last < slowModeDelay) {
+                socket.emit('toast', {text: `🐢 Wait ${((slowModeDelay - (now-last))/1000).toFixed(1)}s`});
+                return;
+            }
         }
-    });
+        
+        // Check Flood (Rapid Fire)
+        if (now - last < 200) {
+            floodCount[socket.id] = (floodCount[socket.id] || 0) + 1;
+            if (floodCount[socket.id] > 5) {
+                mutedUsers.add(name);
+                socket.emit('sys_alert', "🛑 MUTED FOR SPAMMING");
+                return;
+            }
+        } else {
+            floodCount[socket.id] = 0;
+        }
+        socketLastMsg[socket.id] = now;
 
-    // --- CHAT MESSAGING (Enhanced) ---
-    socket.on('chat message', (data) => {
-        try {
-            const name = activeSockets[socket.id];
-            if (!name) return;
-            if (!data.content && data.type !== 'image') return; // Prevent empty msgs
-            
-            const db = getDB();
-            const user = db.users[name];
-            
-            // Construct the ultimate message object
-            const msg = {
-                id: Date.now() + Math.random().toString(36).substr(2, 9),
-                type: data.type || 'text', 
-                content: data.content, 
-                replyTo: data.replyTo || null, // Support for Replies
-                user: user.name,
-                avatar: user.avatar, 
-                avatarColor: user.color,
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                read: false,
-                reactions: {}
-            };
+        // B. Permissions Check
+        if (mutedUsers.has(name) || (isChatFrozen && !socket.isAdmin)) return;
 
+        // C. Clean Text
+        if (data.type === 'text') {
+            data.content = cleanText(data.content);
+        }
+
+        // D. Handle Video (FEATURE REQUESTED)
+        // Note: data.content for video will be a large Base64 Data URI string
+        if (data.type === 'video') {
+            // We verify it's a string and not empty
+            if(!data.content || typeof data.content !== 'string') return;
+            // Video is treated just like images in DB, but with type='video'
+        }
+
+        // E. Private Message Handling
+        if (data.type === 'text' && data.content.startsWith('/w')) {
+            const parts = data.content.split(' ');
+            const targetName = parts[1];
+            const dmMsg = parts.slice(2).join(' ');
+            
+            const targetId = Object.keys(activeSockets).find(k => activeSockets[k] === targetName);
+            if (targetId) {
+                const payload = { 
+                    id: Date.now(), type: 'text', content: dmMsg, 
+                    user: name, isDM: true, time: new Date().toLocaleTimeString() 
+                };
+                io.to(targetId).emit('message_receive', payload);
+                socket.emit('message_receive', payload);
+            } else {
+                socket.emit('toast', {text: "User not found"});
+            }
+            return;
+        }
+
+        // F. Save & Broadcast
+        const db = getDB();
+        const msg = {
+            id: Date.now() + Math.random().toString(36).substr(2, 9),
+            type: data.type || 'text',
+            content: data.content, 
+            replyTo: data.replyTo || null,
+            user: name,
+            avatar: db.users[name]?.avatar, 
+            avatarColor: db.users[name]?.color,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            read: false,
+            // New: Ephemeral flag
+            ephemeral: data.ephemeral || false
+        };
+
+        // If it's an ephemeral message, don't save to DB (or save with delete flag)
+        if (!msg.ephemeral) {
             db.messages.push(msg);
             saveDB(db);
-            io.emit('message_receive', msg);
-        } catch (error) {
-            console.error("Message Error:", error);
-            socket.emit('toast', { text: "Error sending message. File might be too big." });
+        }
+
+        io.emit('message_receive', msg);
+
+        // Ephemeral Logic (Server-side deletion trigger)
+        if (msg.ephemeral) {
+            setTimeout(() => {
+                io.emit('message_removed', msg.id);
+            }, 10000); // Auto delete after 10 seconds
         }
     });
 
-    // --- READ RECEIPTS ---
-    socket.on('mark_read', (id) => {
+    // 5. MESSAGE EDITING (WITH HISTORY)
+    socket.on('edit_message', (d) => {
+        const name = activeSockets[socket.id];
         const db = getDB();
-        const m = db.messages.find(x => x.id === id);
-        if (m) { 
-            m.read = true; 
-            saveDB(db); 
-        }
-    });
-
-    // --- REACTIONS ---
-    socket.on('add_reaction', ({ id, emoji }) => {
-        const db = getDB();
-        const msg = db.messages.find(m => m.id === id);
-        if(msg) {
-            if(!msg.reactions) msg.reactions = {};
-            if(!msg.reactions[emoji]) msg.reactions[emoji] = 0;
-            msg.reactions[emoji]++;
+        const msg = db.messages.find(m => m.id === d.id);
+        
+        if(msg && msg.user === name) {
+            // Store history (Feature 9)
+            if(!msg.editHistory) msg.editHistory = [];
+            msg.editHistory.push({ content: msg.content, time: Date.now() });
+            
+            msg.content = cleanText(d.content);
+            msg.edited = true;
             saveDB(db);
-            io.emit('reaction_update', { id: msg.id, reactions: msg.reactions });
+            io.emit('message_edited', {id: d.id, content: msg.content});
         }
     });
 
-    // --- DELETE MESSAGE ---
     socket.on('delete_message', (id) => {
         const name = activeSockets[socket.id];
         const db = getDB();
         const msgIndex = db.messages.findIndex(m => m.id === id);
         
-        // Security: Only allow deleting own messages
-        if(msgIndex !== -1 && db.messages[msgIndex].user === name) {
-            db.messages.splice(msgIndex, 1);
-            saveDB(db);
-            io.emit('message_removed', id);
+        // Admin can delete anyone's message
+        if (msgIndex !== -1) {
+            if (db.messages[msgIndex].user === name || socket.isAdmin) {
+                db.messages.splice(msgIndex, 1);
+                saveDB(db);
+                io.emit('message_removed', id);
+            }
         }
     });
 
-    // --- VIDEO SYNC (Watch Party) ---
-    socket.on('video_start', (data) => {
-        videoState = {
-            active: true, type: data.type, src: data.src,
-            status: 'playing', timestamp: 0, lastUpdate: Date.now()
+    // 6. POLLS
+    socket.on('create_poll', (q) => {
+        const name = activeSockets[socket.id];
+        const poll = {
+            id: 'poll-' + Date.now(),
+            type: 'poll',
+            user: name,
+            content: { 
+                question: cleanText(q), 
+                options: [{text:'Yes', votes:0}, {text:'No', votes:0}, {text:'Maybe', votes:0}],
+                total: 0,
+                id: 'poll-' + Date.now()
+            },
+            time: new Date().toLocaleTimeString()
         };
-        io.emit('video_launch', videoState);
-        io.emit('toast', { text: 'Watch Party Started!' });
+        const db = getDB();
+        db.messages.push(poll);
+        saveDB(db);
+        io.emit('message_receive', poll);
     });
 
-    socket.on('video_sync', (data) => {
-        // Sync state on server so new joiners get correct time
-        videoState.status = (data.action === 'play') ? 'playing' : 'paused';
-        videoState.timestamp = data.time;
-        videoState.lastUpdate = Date.now();
-        // Broadcast to others
-        socket.broadcast.emit('video_update', data);
+    socket.on('vote_poll', (d) => {
+        const db = getDB();
+        const msg = db.messages.find(m => m.id === d.id || (m.content && m.content.id === d.id));
+        if(msg && msg.type === 'poll') {
+            msg.content.options[d.opt].votes++;
+            msg.content.total++;
+            saveDB(db);
+            io.emit('poll_update', msg.content);
+        }
     });
 
-    socket.on('video_close', () => {
-        videoState.active = false;
-        io.emit('video_terminate');
-        io.emit('toast', { text: 'Watch Party Ended' });
+    // 7. PROFILE & RICH PRESENCE
+    socket.on('update_profile', (d) => {
+        const n = activeSockets[socket.id];
+        if(n) { 
+            const db=getDB(); 
+            // Sanitize bio
+            if(d.bio) d.bio = cleanText(d.bio);
+            Object.assign(db.users[n], d); 
+            saveDB(db); 
+            // Could emit a 'user_update' event here to refresh UI for others
+        }
     });
+    
+    // 8. WATCH PARTY
+    socket.on('video_start', (d)=>{ videoState={active:true,...d}; io.emit('video_launch',videoState); });
+    socket.on('video_sync', (d)=>{ io.emit('video_update', d); }); // Added sync relay
+    socket.on('video_close', ()=>{ videoState.active=false; io.emit('video_terminate'); });
 
-    // --- DISCONNECT ---
+    // 9. DISCONNECT
     socket.on('disconnect', () => {
         delete activeSockets[socket.id];
-        io.emit('update_online_count', io.engine.clientsCount);
+        if(ghosts.has(socket.id)) ghosts.delete(socket.id);
+        updateCounts();
     });
 });
 
-// Run Server
-server.listen(3000, '0.0.0.0', () => {
-    console.log('✅ ProChat Ultimate Server Running on Port 3000');
-});
+server.listen(3000, '0.0.0.0', () => { console.log('✅ ProChat Server v15 Running'); });
