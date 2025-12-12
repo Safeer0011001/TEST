@@ -106,6 +106,11 @@ io.on('connection', (socket) => {
         // Send Pinned Message (Feature 11)
         if(db.pinned) socket.emit('sys_announce', db.pinned);
         
+        // Check if video is currently playing for new joiner
+        if(videoState.active) {
+            socket.emit('video_launch', videoState);
+        }
+
         updateCounts();
         socket.broadcast.emit('toast', { text: `${name} joined` });
         
@@ -208,7 +213,7 @@ io.on('connection', (socket) => {
         if (action === 'chaos') io.emit('force_chaos');
     });
 
-    // 4. CHAT MESSAGING (UPDATED FOR VIDEO & FEATURES)
+    // 4. CHAT MESSAGING
     socket.on('chat message', (data) => {
         const name = activeSockets[socket.id];
         if (!name) return;
@@ -246,12 +251,9 @@ io.on('connection', (socket) => {
             data.content = cleanText(data.content);
         }
 
-        // D. Handle Video (FEATURE REQUESTED)
-        // Note: data.content for video will be a large Base64 Data URI string
+        // D. Handle Video
         if (data.type === 'video') {
-            // We verify it's a string and not empty
             if(!data.content || typeof data.content !== 'string') return;
-            // Video is treated just like images in DB, but with type='video'
         }
 
         // E. Private Message Handling
@@ -286,11 +288,9 @@ io.on('connection', (socket) => {
             avatarColor: db.users[name]?.color,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             read: false,
-            // New: Ephemeral flag
             ephemeral: data.ephemeral || false
         };
 
-        // If it's an ephemeral message, don't save to DB (or save with delete flag)
         if (!msg.ephemeral) {
             db.messages.push(msg);
             saveDB(db);
@@ -298,22 +298,20 @@ io.on('connection', (socket) => {
 
         io.emit('message_receive', msg);
 
-        // Ephemeral Logic (Server-side deletion trigger)
         if (msg.ephemeral) {
             setTimeout(() => {
                 io.emit('message_removed', msg.id);
-            }, 10000); // Auto delete after 10 seconds
+            }, 10000); 
         }
     });
 
-    // 5. MESSAGE EDITING (WITH HISTORY)
+    // 5. MESSAGE EDITING
     socket.on('edit_message', (d) => {
         const name = activeSockets[socket.id];
         const db = getDB();
         const msg = db.messages.find(m => m.id === d.id);
         
         if(msg && msg.user === name) {
-            // Store history (Feature 9)
             if(!msg.editHistory) msg.editHistory = [];
             msg.editHistory.push({ content: msg.content, time: Date.now() });
             
@@ -329,7 +327,6 @@ io.on('connection', (socket) => {
         const db = getDB();
         const msgIndex = db.messages.findIndex(m => m.id === id);
         
-        // Admin can delete anyone's message
         if (msgIndex !== -1) {
             if (db.messages[msgIndex].user === name || socket.isAdmin) {
                 db.messages.splice(msgIndex, 1);
@@ -376,18 +373,37 @@ io.on('connection', (socket) => {
         const n = activeSockets[socket.id];
         if(n) { 
             const db=getDB(); 
-            // Sanitize bio
             if(d.bio) d.bio = cleanText(d.bio);
             Object.assign(db.users[n], d); 
             saveDB(db); 
-            // Could emit a 'user_update' event here to refresh UI for others
         }
     });
     
-    // 8. WATCH PARTY
-    socket.on('video_start', (d)=>{ videoState={active:true,...d}; io.emit('video_launch',videoState); });
-    socket.on('video_sync', (d)=>{ io.emit('video_update', d); }); // Added sync relay
-    socket.on('video_close', ()=>{ videoState.active=false; io.emit('video_terminate'); });
+    // --- ADDED: TYPING INDICATORS ---
+    socket.on('typing', (user) => {
+        // Broadcast to everyone EXCEPT the sender
+        socket.broadcast.emit('display_typing', user);
+    });
+    
+    socket.on('stop_typing', () => {
+        socket.broadcast.emit('hide_typing');
+    });
+    
+    // 8. WATCH PARTY (FIXED)
+    socket.on('video_start', (d)=>{ 
+        videoState = { active: true, ...d }; 
+        io.emit('video_launch', videoState); 
+    });
+    
+    // ** FIX: Renamed to match client & used broadcast to avoid loop **
+    socket.on('video_sync', (d) => { 
+        socket.broadcast.emit('video_sync_event', d); 
+    }); 
+    
+    socket.on('video_close', () => { 
+        videoState.active = false; 
+        io.emit('video_terminate'); 
+    });
 
     // 9. DISCONNECT
     socket.on('disconnect', () => {
@@ -397,4 +413,4 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(3000, '0.0.0.0', () => { console.log('✅ ProChat Server v15 Running'); });
+server.listen(3000, '0.0.0.0', () => { console.log('✅ ProChat Server v18 Running'); });
