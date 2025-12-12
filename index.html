@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ProChat Ultimate v17 - Custom UI</title>
+    <title>ProChat Ultimate v18 - Sync & Docker</title>
 
     <!-- Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <script src="https://www.youtube.com/iframe_api"></script>
 
 <style>
     /* --- CORE & VARIABLES --- */
@@ -23,6 +24,7 @@
         --danger: #ef4444;
         --text-main: #ffffff; 
         --text-muted: #94a3b8;
+        --header-height: 70px; /* Defined for calculations */
         --grad-bubble-me: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
         --grad-bubble-other: linear-gradient(135deg, #1e1e2e 0%, #252535 100%);
         --grad-bubble-dm: linear-gradient(135deg, #4c1d95 0%, #7c3aed 100%);
@@ -38,7 +40,7 @@
 
     /* --- DRAG & DROP --- */
     #drop-zone { position: fixed; inset: 0; background: rgba(99, 102, 241, 0.85); z-index: 10000; display: none; align-items: center; justify-content: center; flex-direction: column; backdrop-filter: blur(8px); border: 4px dashed white; margin: 10px; border-radius: 30px; animation: pulseFade 1.5s infinite; pointer-events: none; }
-    #drop-zone.active { display: flex; }
+    #drop-zone.active { display: flex; pointer-events: auto; }
     @keyframes pulseFade { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
 
     /* --- BG FX --- */
@@ -48,7 +50,7 @@
     @keyframes floatOrb { from { transform: translate(0,0) scale(1); } to { transform: translate(40px, -60px) scale(1.15); } }
 
     /* --- HEADER --- */
-    .header { position:fixed; top:15px; left:15px; right:15px; height:70px; background: var(--bg-glass-heavy); backdrop-filter: blur(25px); z-index: 100; display:flex; align-items:center; justify-content:space-between; padding:0 20px; border-radius: 28px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 15px 40px -10px rgba(0,0,0,0.6); }
+    .header { position:fixed; top:15px; left:15px; right:15px; height:var(--header-height); background: var(--bg-glass-heavy); backdrop-filter: blur(25px); z-index: 100; display:flex; align-items:center; justify-content:space-between; padding:0 20px; border-radius: 28px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 15px 40px -10px rgba(0,0,0,0.6); }
     .logo-text { font-weight: 800; font-size: 1.4rem; background: linear-gradient(to right, #fff, var(--primary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 0 0 20px var(--primary-glow); }
     .status-txt { font-size: 0.7rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
     .dot-anim { width: 6px; height: 6px; background: #4ade80; border-radius: 50%; animation: pulseDot 2s infinite; }
@@ -59,7 +61,10 @@
     .status-dot { position: absolute; bottom: -2px; right: -2px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #000; }
 
     /* --- CHAT --- */
-    #chat-zone { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 24px; padding-top: 110px; padding-bottom: 140px; scroll-behavior: smooth; }
+    #chat-zone { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 24px; padding-top: 110px; padding-bottom: 140px; scroll-behavior: smooth; transition: padding-top 0.3s ease; }
+    /* Class applied when video is open to push chat down */
+    #chat-zone.video-active { padding-top: 360px; } 
+
     .msg-row { display: flex; gap: 14px; align-items: flex-end; opacity: 0; animation: fadeInUp 0.4s forwards; }
     .msg-row.me { flex-direction: row-reverse; }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -78,6 +83,10 @@
     .highlight-mention { background: rgba(239, 68, 68, 0.3); padding: 0 4px; border-radius: 4px; color: #fca5a5; font-weight: bold; }
     .embed-vid { max-width: 250px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
     .system-msg { align-self: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); padding: 8px 20px; border-radius: 20px; font-size: 0.85rem; color: #fca5a5; margin: 10px 0; font-weight: bold; }
+    
+    .watch-party-btn { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 8px 14px; margin-top: 8px; cursor: pointer; transition: 0.2s; font-size: 0.85rem; font-weight: 600; }
+    .watch-party-btn:hover { background: rgba(255,255,255,0.1); transform: scale(1.02); }
+    .watch-party-btn i { color: #facc15; font-size: 1.1rem; }
 
 
     /* --- INPUT AREA --- */
@@ -102,7 +111,7 @@
     .rec-trash { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
     .rec-send { color: #10b981; background: rgba(16, 185, 129, 0.1); }
 
-    /* --- NEW UNIVERSAL POPUP UI --- */
+    /* POPUPS */
     #custom-popup { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 99999; display: none; align-items: center; justify-content: center; backdrop-filter: blur(10px); opacity: 0; transition: 0.3s; }
     #custom-popup.active { display: flex; opacity: 1; }
     .popup-card { background: #111; border: 1px solid rgba(255,255,255,0.1); padding: 30px; width: 90%; max-width: 350px; border-radius: 24px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); transform: scale(0.9); transition: 0.3s; }
@@ -165,6 +174,73 @@
     .context-menu { position: absolute; bottom: 130%; left: 50%; transform: translateX(-50%); background: rgba(20, 20, 35, 0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 6px; display: none; gap: 4px; z-index: 1000; }
     .context-menu.show { display: flex; }
     .action-btn { background: rgba(255,255,255,0.05); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white; border: 1px solid rgba(255,255,255,0.1); }
+    
+    /* --- NEW DOCKED/STICKY VIDEO LAYER --- */
+    #sticky-layer { 
+        position: fixed; 
+        top: 90px; /* Below header */
+        left: 0; 
+        right: 0; 
+        z-index: 90; 
+        display: none; 
+        flex-direction: column; 
+        align-items: center;
+        pointer-events: none; /* Allows clicking through the empty space */
+        transition: 0.3s;
+    }
+    #sticky-layer.active { display: flex; }
+    
+    .video-shell {
+        pointer-events: auto; /* Re-enable clicks for the player */
+        width: 100%;
+        max-width: 800px;
+        position: relative;
+        background: #000;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.1);
+        transition: 0.3s ease;
+    }
+
+    .video-box { 
+        width: 100%; 
+        aspect-ratio: 16/9; 
+        background: black; 
+    }
+
+    /* Video Header with Controls */
+    .vid-head-bar {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 40px;
+        background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 0 10px;
+        gap: 10px;
+        z-index: 10;
+        opacity: 0;
+        transition: 0.2s;
+    }
+    .video-shell:hover .vid-head-bar { opacity: 1; }
+
+    .vid-ctrl-btn { color: white; cursor: pointer; font-size: 20px; background: rgba(0,0,0,0.4); border-radius: 4px; padding: 2px 6px; }
+    .vid-ctrl-btn:hover { background: var(--primary); }
+
+    /* Minimized State */
+    #sticky-layer.minimized .video-shell {
+        position: fixed;
+        bottom: 100px;
+        right: 20px;
+        width: 180px;
+        max-width: 40%;
+        border-radius: 12px;
+        border: 1px solid var(--primary);
+    }
+    #sticky-layer.minimized .vid-head-bar { opacity: 1; height: 30px; }
+
 </style>
 </head>
 <body>
@@ -197,11 +273,17 @@
     <div style="position:absolute; top:20px; right:20px; color:white; font-size:2rem; cursor:pointer;">&times;</div>
 </div>
 
+<!-- NEW STICKY DOCKABLE PLAYER -->
 <div id="sticky-layer">
-    <div style="position:relative; width:100%; max-width:800px;">
-        <div class="close-vid" onclick="stopWatching()"><i class="ph-bold ph-x"></i></div>
+    <div class="video-shell" id="video-shell">
+        <div class="vid-head-bar">
+            <div class="vid-ctrl-btn" onclick="toggleVidSize()"><i class="ph-bold ph-minus"></i></div>
+            <div class="vid-ctrl-btn" onclick="stopWatching()" style="background:rgba(239,68,68,0.5)"><i class="ph-bold ph-x"></i></div>
+        </div>
         <div class="video-box" id="player-container"></div>
-        <div style="color:#a5b4fc; font-size:0.8rem; margin-top:10px; text-align:center; font-weight:600;">● Live Sync Active</div>
+    </div>
+    <div style="margin-top:5px; background:rgba(0,0,0,0.5); padding:4px 12px; border-radius:20px; font-size:0.8rem; pointer-events:auto; backdrop-filter:blur(5px);">
+        <span class="dot-anim" style="display:inline-block; margin-right:5px; background:red;"></span> LIVE SYNC
     </div>
 </div>
 
@@ -222,8 +304,8 @@
 
 <div id="chat-zone"></div>
 
-<div id="typing-indicator" style="position: fixed; bottom: 110px; left: 20px; background: rgba(30, 30, 50, 0.9); padding: 8px 16px; border-radius: 20px; display: none; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,0.1);">
-    <i class="ph-fill ph-keyboard"></i> <span id="typing-text">Someone is typing</span>
+<div id="typing-indicator" style="position: fixed; bottom: 110px; left: 20px; background: rgba(30, 30, 50, 0.9); padding: 8px 16px; border-radius: 20px; display: none; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(5px);">
+    <i class="ph-fill ph-keyboard"></i> <span id="typing-text">Someone is typing...</span>
 </div>
 
 <div class="input-wrapper">
@@ -349,7 +431,7 @@
         <div style="width:90px; height:90px; background:rgba(99,102,241,0.1); border-radius:50%; margin:0 auto 20px; display:flex; align-items:center; justify-content:center; border:1px solid var(--primary);">
             <i class="ph-duotone ph-planet" style="font-size:48px; color:var(--primary);"></i>
         </div>
-        <h2 style="margin:0;">ProChat v17</h2>
+        <h2 style="margin:0;">ProChat v18</h2>
         <input id="log-name" class="inp" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.2); border-radius:18px; text-align:center; padding:15px; font-size:1.1rem; margin-bottom:5px;" placeholder="Enter Nickname">
         <button class="btn" onclick="login()">Connect</button>
     </div>
@@ -388,7 +470,6 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
     const socket = io();
@@ -397,67 +478,40 @@
     let ghostMode = false;
     let replyContext = null;
     let editContext = null;
-    let playerType=null, ytPlayer=null;
     
+    // --- VIDEO SYNC VARIABLES ---
+    let ytPlayer=null;
+    let directVidEl=null;
+    let isRemoteUpdate = false; // Prevents loops (Me -> Server -> Me -> Server)
+
     // RECORDERS
     let mediaRecorder = null, audioChunks = [], isRecording = false, recTimerInt = null;
     let videoRecorder = null, videoChunks = [], isVideoRecording = false, vidRecStartTime = 0, vidTimerInt = null;
 
     // --- NEW CUSTOM POPUP SYSTEM ---
-    // Types: 'alert' (default), 'confirm', 'prompt'
     let popupCallback = null;
-
     function showPopup(type, title, msg, callback = null) {
         const p = document.getElementById('custom-popup');
         const card = document.getElementById('popup-card');
         const inp = document.getElementById('popup-input');
         const btnCancel = document.getElementById('popup-cancel');
-
         document.getElementById('popup-title').innerText = title;
         document.getElementById('popup-msg').innerText = msg;
         popupCallback = callback;
-
-        // Reset
         card.classList.remove('danger-mode');
-        inp.style.display = 'none';
-        inp.value = '';
-        btnCancel.style.display = 'none';
-
-        if (title.toLowerCase().includes('alert') || title.toLowerCase().includes('error') || title.toLowerCase().includes('banned')) {
-            card.classList.add('danger-mode');
-        }
-
-        if (type === 'confirm') {
-            btnCancel.style.display = 'block';
-        } else if (type === 'prompt') {
-            inp.style.display = 'block';
-            btnCancel.style.display = 'block';
-            setTimeout(() => inp.focus(), 100);
-        }
-
+        inp.style.display = 'none'; inp.value = ''; btnCancel.style.display = 'none';
+        if (title.toLowerCase().includes('alert') || title.toLowerCase().includes('error')) card.classList.add('danger-mode');
+        if (type === 'confirm') btnCancel.style.display = 'block';
+        else if (type === 'prompt') { inp.style.display = 'block'; btnCancel.style.display = 'block'; setTimeout(() => inp.focus(), 100); }
         p.classList.add('active');
     }
-
-    function closePopup() {
-        document.getElementById('custom-popup').classList.remove('active');
-        popupCallback = null;
-    }
-
+    function closePopup() { document.getElementById('custom-popup').classList.remove('active'); popupCallback = null; }
     document.getElementById('popup-ok').addEventListener('click', () => {
         const inp = document.getElementById('popup-input');
-        const p = document.getElementById('custom-popup');
-        
-        if (popupCallback) {
-            if (inp.style.display === 'block') popupCallback(inp.value);
-            else popupCallback(true);
-        }
+        if (popupCallback) { if (inp.style.display === 'block') popupCallback(inp.value); else popupCallback(true); }
         closePopup();
     });
-
-    document.getElementById('popup-cancel').addEventListener('click', () => {
-        if (popupCallback) popupCallback(false);
-        closePopup();
-    });
+    document.getElementById('popup-cancel').addEventListener('click', () => { if (popupCallback) popupCallback(false); closePopup(); });
 
     // --- AUDIO ---
     async function startRecordingInit() {
@@ -563,21 +617,15 @@
     function setCustomTheme(c) { document.documentElement.style.setProperty('--primary', c); document.documentElement.style.setProperty('--primary-glow', c+'66'); }
     function toggleSound(el) { soundEnabled = el.checked; }
 
-    // --- ADMIN (UPDATED WITH CUSTOM POPUPS) ---
+    // --- ADMIN ---
     function openAdmin() { toggle('admin-mod', true); }
     function checkGod() { socket.emit('god_attempt', document.getElementById('admin-pass').value); }
     function switchTab(t) { document.querySelectorAll('.god-tab').forEach(e=>e.classList.remove('active')); document.querySelectorAll('.god-section').forEach(e=>e.classList.remove('active')); document.querySelector(`.god-tab[onclick="switchTab('${t}')"]`).classList.add('active'); document.getElementById(`tab-${t}`).classList.add('active'); }
     function logGod(m) { const t=document.getElementById('god-log'); t.innerHTML+=`<div>> ${m}</div>`; t.scrollTop=t.scrollHeight; }
     function doGod(act) {
         const t = document.getElementById('god-target').value;
-        if(act==='slowmode' && !t) { 
-            showPopup('prompt', 'Slow Mode', 'Enter delay in milliseconds (e.g. 2000):', (val)=>{ if(val) socket.emit('god_action', {action:act, target:val}); });
-            return; 
-        }
-        if(['announce','alert'].includes(act) && !t) {
-            showPopup('prompt', 'Broadcast', 'Enter message:', (val)=>{ if(val) socket.emit('god_action', {action:act, target:val}); });
-            return;
-        }
+        if(act==='slowmode' && !t) { showPopup('prompt', 'Slow Mode', 'Enter delay (ms):', (val)=>{ if(val) socket.emit('god_action', {action:act, target:val}); }); return; }
+        if(['announce','alert'].includes(act) && !t) { showPopup('prompt', 'Broadcast', 'Enter message:', (val)=>{ if(val) socket.emit('god_action', {action:act, target:val}); }); return; }
         socket.emit('god_action', {action: act, target: t});
     }
     function refreshUserList() { socket.emit('get_active_users'); }
@@ -589,10 +637,7 @@
     socket.on('god_log', m=>logGod(m));
     socket.on('spy_result', d=> showPopup('alert', 'Spy Report', `User: ${d.user}\nIP: ${d.ip}\nID: ${d.id}`));
     socket.on('sys_clear', () => { document.getElementById('chat-zone').innerHTML=''; showToast("CHAT NUKED"); });
-    
-    // RED SYSTEM ALERT
     socket.on('sys_alert', m => showPopup('alert', 'SYSTEM ALERT', m));
-    
     socket.on('sys_announce', m=>{ const el=document.getElementById('sticky-announcement'); el.innerText="📢 "+m; el.style.display='block'; });
     socket.on('sys_clear_ann', ()=>document.getElementById('sticky-announcement').style.display='none');
     socket.on('force_chaos', ()=>{ document.body.classList.add('chaos'); setTimeout(()=>document.body.classList.remove('chaos'),10000); });
@@ -604,7 +649,7 @@
     ['dragenter','dragover','dragleave','drop'].forEach(e=>document.body.addEventListener(e,ev=>{ev.preventDefault();ev.stopPropagation()},false));
     ['dragenter','dragover'].forEach(e=>document.body.addEventListener(e,()=>dropZone.classList.add('active'),false));
     ['dragleave','drop'].forEach(e=>document.body.addEventListener(e,()=>dropZone.classList.remove('active'),false));
-    document.body.addEventListener('drop', e=>{ let f=e.dataTransfer.files[0]; if(f&&f.type.startsWith('image/')){const r=new FileReader();r.onload=ev=>socket.emit('chat message',{type:'image',content:ev.target.result, ephemeral:ghostMode});r.readAsDataURL(f);} },false);
+    document.body.addEventListener('drop', e=>{ dropZone.classList.remove('active'); let f=e.dataTransfer.files[0]; if(f&&f.type.startsWith('image/')){const r=new FileReader();r.onload=ev=>socket.emit('chat message',{type:'image',content:ev.target.result, ephemeral:ghostMode});r.readAsDataURL(f);} },false);
 
     function toggle(id,s){ const el=document.getElementById(id); if(s)el.classList.add('active'); else el.classList.remove('active'); }
     function login(){ const n=document.getElementById('log-name').value.trim(); if(n)socket.emit('join',n); }
@@ -613,6 +658,18 @@
     socket.on('toast', d=>{ showToast(d.text); if(soundEnabled) playSoftPop(); });
 
     function fmtTime(s){ if(isNaN(s)) return "0:00"; const m=Math.floor(s/60); const sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}`; }
+    
+    // --- HELPER TO FIND VIDEOS ---
+    function extractVideoData(text) {
+        const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+        const ytMatch = text.match(ytRegex);
+        if (ytMatch) return { type: 'youtube', src: ytMatch[1] };
+        const vidRegex = /(https?:\/\/.*\.(?:mp4|webm|ogg))/i;
+        const vidMatch = text.match(vidRegex);
+        if (vidMatch) return { type: 'video_direct', src: vidMatch[1] };
+        return null;
+    }
+
     function parse(type, txt) {
         if(type==='image') return `<img src="${txt}" onclick="openLightbox(this.src)" style="max-width:200px; border-radius:12px; cursor:pointer;">`;
         if(type==='video') return `<video src="${txt}" controls class="embed-vid"></video>`;
@@ -634,6 +691,16 @@
     window.upAudio=(id)=>{const a=document.getElementById(id); const i=document.getElementById('icon-'+id); const w=document.getElementById('wave-'+id); const f=document.getElementById('fill-'+id); const c=document.getElementById('cur-'+id); if(!a.paused){i.className='ph-fill ph-pause';w.classList.add('playing');}else{i.className='ph-fill ph-play';w.classList.remove('playing');} f.style.width=(a.currentTime/a.duration)*100+'%'; c.innerText=fmtTime(a.currentTime);}
     window.endAudio=(id)=>{document.getElementById('icon-'+id).className='ph-fill ph-play'; document.getElementById('wave-'+id).classList.remove('playing'); document.getElementById('fill-'+id).style.width='0%';}
 
+    // TYPING
+    let typingTimer;
+    document.getElementById('msg-in').addEventListener('input', () => {
+        socket.emit('typing', myProfile.name);
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(() => socket.emit('stop_typing'), 1000);
+    });
+    socket.on('display_typing', (user) => { if(user !== myProfile.name) { document.getElementById('typing-indicator').style.display = 'flex'; document.getElementById('typing-text').innerText = `${user} is typing...`; } });
+    socket.on('hide_typing', () => { document.getElementById('typing-indicator').style.display = 'none'; });
+
     function sendMsg(e) { 
         e.preventDefault(); const inp=document.getElementById('msg-in'); 
         if(inp.value.trim()){ 
@@ -646,6 +713,7 @@
             inp.value=''; 
         }
     }
+
     function addMsg(d) {
         if(d.type==='system'){const r=document.createElement('div');r.innerHTML=`<div class="system-msg">${d.content}</div>`;document.getElementById('chat-zone').appendChild(r);return;}
         const isMe = d.user === myProfile.name;
@@ -653,6 +721,11 @@
         r.className = `msg-row ${isMe?'me':'other'} ${d.ephemeral ? 'ghost-msg' : ''}`;
         r.id = `msg-${d.id}`;
         let adm = isMe && d.type==='text' ? `<div class="ctx-item" onclick="startEdit('${d.id}','${d.content.replace(/'/g,"\\'")}')"><i class="ph-bold ph-pencil"></i> Edit</div>` : '';
+        let watchBtnHTML = '';
+        if(d.type === 'text') {
+            const vidData = extractVideoData(d.content);
+            if(vidData) watchBtnHTML = `<div class="watch-party-btn" onclick="startVideo('${vidData.type}', '${vidData.src}')"><i class="ph-fill ph-film-strip"></i> Watch Together</div>`;
+        }
         r.innerHTML = `
             ${!isMe ? (d.avatar?`<img class="msg-av" src="${d.avatar}">`:`<div class="msg-av-placeholder" style="background:${d.avatarColor}">${d.user[0]}</div>`) : ''}
             <div class="bubble-container">
@@ -660,6 +733,7 @@
                 <div class="bubble">
                     ${d.replyTo?`<small><i class="ph-bold ph-arrow-bend-up-left"></i> ${d.replyTo.user}</small><br>`:''}
                     <span id="txt-${d.id}">${parse(d.type, d.content)}</span>
+                    ${watchBtnHTML}
                     ${d.ephemeral ? '<br><small style="opacity:0.6">👻 Self-destructing...</small>' : ''}
                 </div>
             </div>
@@ -687,16 +761,83 @@
     function openPollModal(){toggle('poll-mod',true);}
     function createPoll(){const q=document.getElementById('poll-q').value;if(q){socket.emit('create_poll',q);toggle('poll-mod',false);}}
     function vote(id,o){socket.emit('vote_poll',{id,opt:o});}
-    function startVideo(t,s){socket.emit('video_start',{type:t,src:s});}
-    function stopWatching(){socket.emit('video_close');}
-    function initYT(d){document.getElementById('player-container').innerHTML='<div id="yt-slot"></div>';ytPlayer=new YT.Player('yt-slot',{width:'100%',height:'100%',videoId:d.src});}
+    
+    // --- WATCH TOGETHER / VIDEO FUNCTIONS ---
+    function startVideo(t,s){ socket.emit('video_start',{type:t,src:s}); }
+    function stopWatching(){ socket.emit('video_close'); }
+    function toggleVidSize() { document.getElementById('sticky-layer').classList.toggle('minimized'); }
+
+    // EMIT SYNC EVENTS
+    function emitSync(action, time) {
+        if(isRemoteUpdate) return;
+        socket.emit('video_sync', { action, time });
+    }
+
+    // INITIALIZE YOUTUBE
+    function initYT(d){
+        document.getElementById('player-container').innerHTML='<div id="yt-slot"></div>';
+        if(window.YT && window.YT.Player) {
+            ytPlayer=new YT.Player('yt-slot',{
+                width:'100%', height:'100%', videoId:d.src,
+                playerVars: { 'autoplay': 1, 'controls': 1 },
+                events: {
+                    'onReady': (e) => e.target.playVideo(),
+                    'onStateChange': (e) => {
+                        if(e.data === YT.PlayerState.PLAYING) emitSync('play', ytPlayer.getCurrentTime());
+                        if(e.data === YT.PlayerState.PAUSED) emitSync('pause', ytPlayer.getCurrentTime());
+                    }
+                }
+            });
+        }
+    }
+    
+    // INITIALIZE DIRECT VIDEO
+    function initDirectVideo(d) {
+        document.getElementById('player-container').innerHTML = `<video id="dv-el" src="${d.src}" controls autoplay style="width:100%; height:100%; object-fit:contain;"></video>`;
+        directVidEl = document.getElementById('dv-el');
+        directVidEl.addEventListener('play', () => emitSync('play', directVidEl.currentTime));
+        directVidEl.addEventListener('pause', () => emitSync('pause', directVidEl.currentTime));
+        directVidEl.addEventListener('seeked', () => emitSync('seek', directVidEl.currentTime));
+    }
+
     socket.on('message_receive', addMsg);
     socket.on('history', h=>h.forEach(addMsg));
     socket.on('message_removed', id=>{const el=document.getElementById(`msg-${id}`);if(el){el.style.opacity=0;setTimeout(()=>el.remove(),300);}});
     socket.on('message_edited', d=>{const el=document.getElementById(`txt-${d.id}`);if(el)el.innerHTML=parse('text',d.content);});
     socket.on('poll_update', p=>{const el=document.getElementById(`msg-${p.id}`);if(el)el.querySelector('.bubble').innerHTML=parse('poll',p);});
-    socket.on('video_launch', d=>{document.getElementById('sticky-layer').classList.add('active');if(d.type==='youtube')initYT(d);});
-    socket.on('video_terminate', ()=>{document.getElementById('sticky-layer').classList.remove('active');document.getElementById('player-container').innerHTML='';});
+    
+    // VIDEO SYNC LISTENERS
+    socket.on('video_launch', d=>{
+        const sticky = document.getElementById('sticky-layer');
+        sticky.style.display = 'flex';
+        // Adjust chat padding
+        document.getElementById('chat-zone').classList.add('video-active');
+        if(d.type==='youtube') initYT(d);
+        else if(d.type === 'video_direct') initDirectVideo(d);
+    });
+    
+    socket.on('video_terminate', ()=>{
+        const sticky = document.getElementById('sticky-layer');
+        sticky.style.display = 'none';
+        document.getElementById('chat-zone').classList.remove('video-active');
+        document.getElementById('player-container').innerHTML='';
+        ytPlayer = null; directVidEl = null;
+    });
+
+    socket.on('video_sync_event', (d) => {
+        isRemoteUpdate = true;
+        if(ytPlayer && ytPlayer.seekTo) {
+            if(Math.abs(ytPlayer.getCurrentTime() - d.time) > 1) ytPlayer.seekTo(d.time, true);
+            if(d.action === 'play') ytPlayer.playVideo();
+            else if(d.action === 'pause') ytPlayer.pauseVideo();
+        } else if(directVidEl) {
+            if(Math.abs(directVidEl.currentTime - d.time) > 1) directVidEl.currentTime = d.time;
+            if(d.action === 'play') directVidEl.play();
+            else if(d.action === 'pause') directVidEl.pause();
+        }
+        setTimeout(() => isRemoteUpdate = false, 500); // Reset flag
+    });
+    
     socket.on('update_online_count', c=>document.getElementById('online-cnt').innerText=c);
 </script>
 </body>
